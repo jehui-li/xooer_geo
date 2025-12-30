@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import type { StrategyRecommendation } from '@/types/api'
 import { StrategyRecommendationCard } from './StrategyRecommendationCard'
+import { EmptyStrategyRecommendations } from '@/components/ui/EmptyState'
 
 interface StrategyRecommendationsListProps {
   recommendations: StrategyRecommendation[]
