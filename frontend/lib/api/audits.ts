@@ -1,0 +1,43 @@
+import apiClient from './client'
+import type {
+  AuditRequest,
+  AuditResponse,
+  AuditListResponse,
+} from '@/types/api'
+
+/**
+ * 创建检测
+ */
+export async function createAudit(data: AuditRequest): Promise<AuditResponse> {
+  const response = await apiClient.post<AuditResponse>('/audits', data)
+  return response.data
+}
+
+/**
+ * 获取检测详情
+ */
+export async function getAudit(auditId: string): Promise<AuditResponse> {
+  const response = await apiClient.get<AuditResponse>(`/audits/${auditId}`)
+  return response.data
+}
+
+/**
+ * 获取检测列表
+ */
+export async function listAudits(params?: {
+  skip?: number
+  limit?: number
+}): Promise<AuditListResponse> {
+  const response = await apiClient.get<AuditListResponse>('/audits', {
+    params,
+  })
+  return response.data
+}
+
+/**
+ * 删除检测
+ */
+export async function deleteAudit(auditId: string): Promise<void> {
+  await apiClient.delete(`/audits/${auditId}`)
+}
+
