@@ -316,32 +316,87 @@ async def list_audits(
         审计列表响应
     """
     try:
-        # 检查 MongoDB 连接
+        # 从内存缓存读取（优先使用，因为数据最新）
+        cache_audits = list(_audit_cache.values())
+        logger.debug(f"Cache has {len(cache_audits)} audits: {[a.audit_id for a in cache_audits]}")
+        
+        # 同时尝试从 MongoDB 读取（合并数据）
+        db_audits_dict = {}
         try:
             pool = await get_pool()
-            if not pool.is_connected:
-                # MongoDB 未连接，返回空列表
-                logger.warning("MongoDB not connected, returning empty audit list")
-                return AuditListResponse(audits=[], total=0)
-        except Exception:
-            # MongoDB 连接失败，返回空列表
-            logger.warning("MongoDB connection failed, returning empty audit list")
-            return AuditListResponse(audits=[], total=0)
+            if pool.is_connected:
+                # 添加超时保护，避免阻塞
+                try:
+                    docs = await asyncio.wait_for(
+                        find_many(
+                            collection_name="audit_results",
+                            filter={},
+                            sort=[("started_at", -1)],
+                            limit=1000  # 限制最大数量
+                        ),
+                        timeout=3.0  # 3秒超时
+                    )
+                    
+                    from src.models.utils import dict_to_model
+                    
+                    for doc in docs:
+                        try:
+                            audit_result = dict_to_model(AuditResult, doc)
+                            # 使用 audit_id 作为 key，用于去重
+                            db_audits_dict[audit_result.audit_id] = audit_result
+                        except Exception as e:
+                            logger.warning(f"Failed to parse audit result from DB: {str(e)}")
+                            continue
+                except asyncio.TimeoutError:
+                    logger.warning("MongoDB query timeout, using cache only")
+                except Exception as e:
+                    logger.warning(f"MongoDB query failed: {str(e)}, using cache only")
+        except Exception as e:
+            logger.warning(f"MongoDB connection check failed: {str(e)}, using cache only")
         
-        docs = await find_many(
-            collection_name="audit_results",
-            filter={},
-            sort=[("started_at", -1)],  # 按开始时间倒序
-            skip=skip,
-            limit=limit
+        # 合并缓存和数据库的数据（缓存优先级更高，如果有冲突则使用缓存中的版本）
+        merged_audits_dict = db_audits_dict.copy()
+        for audit_result in cache_audits:
+            # 缓存中的数据覆盖数据库中的数据（因为缓存中的数据更新）
+            merged_audits_dict[audit_result.audit_id] = audit_result
+        
+        # 转换为列表并按开始时间倒序排序
+        all_audits = list(merged_audits_dict.values())
+        all_audits.sort(key=lambda x: x.started_at, reverse=True)
+        
+        # 应用分页
+        paginated_audits = all_audits[skip:skip + limit]
+        
+        # 转换为响应格式
+        audits = []
+        for audit_result in paginated_audits:
+            audits.append(AuditResponse(
+                audit_id=audit_result.audit_id,
+                brand_name=audit_result.brand_name,
+                target_brand=audit_result.target_brand,
+                keywords=audit_result.keywords,
+                status=audit_result.status,
+                geo_score=audit_result.geo_score.overall_score if audit_result.geo_score else None,
+                started_at=audit_result.started_at,
+                completed_at=audit_result.completed_at,
+                error=audit_result.error_message
+            ))
+        
+        return AuditListResponse(
+            audits=audits,
+            total=len(all_audits)
         )
         
-        from src.models.utils import dict_to_model
-        
-        audits = []
-        for doc in docs:
-            try:
-                audit_result = dict_to_model(AuditResult, doc)
+    except Exception as e:
+        logger.error(f"Failed to list audits: {str(e)}", exc_info=True)
+        # 发生异常时，至少返回缓存中的数据
+        try:
+            cache_audits = list(_audit_cache.values())
+            cache_audits.sort(key=lambda x: x.started_at, reverse=True)
+            paginated_audits = cache_audits[skip:skip + limit]
+            
+            audits = []
+            for audit_result in paginated_audits:
                 audits.append(AuditResponse(
                     audit_id=audit_result.audit_id,
                     brand_name=audit_result.brand_name,
@@ -353,20 +408,12 @@ async def list_audits(
                     completed_at=audit_result.completed_at,
                     error=audit_result.error_message
                 ))
-            except Exception as e:
-                logger.warning(f"Failed to parse audit result: {str(e)}")
-                continue
+            
+            logger.warning(f"Returning {len(audits)} audits from cache due to error")
+            return AuditListResponse(audits=audits, total=len(cache_audits))
+        except Exception as cache_error:
+            logger.error(f"Failed to return cache audits: {str(cache_error)}")
         
-        from src.database.db_operations import count_documents
-        total = await count_documents("audit_results", {})
-        
-        return AuditListResponse(
-            audits=audits,
-            total=total
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed to list audits: {str(e)}")
         # 如果是数据库连接错误，返回空列表而不是错误
         if "MongoDB" in str(e) or "connection" in str(e).lower():
             logger.warning("Database connection error, returning empty list")

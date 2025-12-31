@@ -134,7 +134,7 @@ class MongoDBPool:
         Raises:
             Exception: 如果连接未建立则抛出异常
         """
-        if not self._is_connected or not self._database:
+        if not self._is_connected or self._database is None:
             raise Exception("MongoDB connection not established. Call connect() first.")
         return self._database
     
