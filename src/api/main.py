@@ -93,13 +93,13 @@ async def health_check():
         }
 
 
-@app.post("/audits", response_model=AuditResponse, tags=["Audits"])
+@app.post("/detect", response_model=AuditResponse, tags=["Audits"])
 async def create_audit(
     request: AuditRequest,
     api_key: str = Depends(verify_api_key)
 ) -> AuditResponse:
     """
-    创建审计任务
+    创建审计任务（生成检测报告）
     
     Args:
         request: 审计请求

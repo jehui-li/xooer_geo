@@ -10,7 +10,7 @@ import type {
  * 创建检测
  */
 export async function createAudit(data: AuditRequest): Promise<AuditResponse> {
-  const response = await apiClient.post<AuditResponse>('/audits', data)
+  const response = await apiClient.post<AuditResponse>('/detect', data)
   return response.data
 }
 
