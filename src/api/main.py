@@ -15,7 +15,8 @@ from src.api.schemas import (
     AuditRequest,
     AuditResponse,
     AuditListResponse,
-    ErrorResponse
+    ErrorResponse,
+    StatsResponse
 )
 from src.workflows import GeoWorkflow
 from src.models.audit import AuditResult
@@ -468,5 +469,89 @@ async def delete_audit(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete audit: {str(e)}"
+        )
+
+
+@app.get("/stats", response_model=StatsResponse, tags=["Stats"])
+async def get_stats(
+    api_key: str = Depends(verify_api_key)
+) -> StatsResponse:
+    """
+    获取统计数据
+    
+    Args:
+        api_key: API Key
+    
+    Returns:
+        统计数据响应
+    """
+    try:
+        # 合并缓存和数据库的数据
+        cache_audits = list(_audit_cache.values())
+        db_audits_dict = {}
+        
+        try:
+            pool = await get_pool()
+            if pool.is_connected:
+                docs = await find_many(
+                    collection_name="audit_results",
+                    filter={},
+                    limit=10000
+                )
+                
+                from src.models.utils import dict_to_model
+                for doc in docs:
+                    try:
+                        audit_result = dict_to_model(AuditResult, doc)
+                        db_audits_dict[audit_result.audit_id] = audit_result
+                    except Exception as e:
+                        logger.warning(f"Failed to parse audit result from DB: {str(e)}")
+                        continue
+        except Exception as e:
+            logger.warning(f"MongoDB query failed in stats: {str(e)}")
+        
+        # 合并数据（缓存优先）
+        all_audits_dict = db_audits_dict.copy()
+        for audit_result in cache_audits:
+            all_audits_dict[audit_result.audit_id] = audit_result
+        
+        all_audits = list(all_audits_dict.values())
+        
+        # 计算统计数据
+        total_audits = len(all_audits)
+        completed_audits = len([a for a in all_audits if a.status == "completed"])
+        
+        # 计算平均分数
+        completed_with_score = [
+            a for a in all_audits 
+            if a.status == "completed" and a.geo_score and a.geo_score.overall_score is not None
+        ]
+        average_score = None
+        if completed_with_score:
+            total_score = sum(a.geo_score.overall_score for a in completed_with_score)
+            average_score = total_score / len(completed_with_score)
+        
+        # 计算品牌数（去重）
+        unique_brands = set()
+        for audit in all_audits:
+            if audit.brand_name:
+                unique_brands.add(audit.brand_name)
+        total_brands = len(unique_brands)
+        
+        return StatsResponse(
+            total_audits=total_audits,
+            completed_audits=completed_audits,
+            average_score=average_score,
+            total_brands=total_brands
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get stats: {str(e)}", exc_info=True)
+        # 发生错误时返回默认值
+        return StatsResponse(
+            total_audits=0,
+            completed_audits=0,
+            average_score=None,
+            total_brands=0
         )
 

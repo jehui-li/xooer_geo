@@ -1,19 +1,41 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { StatCard } from '@/components/ui/StatCard'
+import { getStats } from '@/lib/api/audits'
+import type { StatsResponse } from '@/types/api'
 
 /**
  * 首页/仪表板
  */
 export default function Home() {
-  // TODO: 从 API 获取实际统计数据
-  const stats = {
-    totalAudits: 0,
-    completedAudits: 0,
-    averageScore: 0,
-    totalBrands: 0,
-  }
+  const [stats, setStats] = useState<StatsResponse>({
+    total_audits: 0,
+    completed_audits: 0,
+    average_score: null,
+    total_brands: 0,
+  })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        setLoading(true)
+        const data = await getStats()
+        setStats(data)
+      } catch (error) {
+        console.error('Failed to fetch stats:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchStats()
+    // 每 5 秒刷新一次统计数据
+    const interval = setInterval(fetchStats, 5000)
+    return () => clearInterval(interval)
+  }, [])
 
   return (
     <div className="container py-8">
@@ -45,7 +67,7 @@ export default function Home() {
       <div className="mb-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="总检测数"
-          value={stats.totalAudits}
+          value={loading ? '...' : stats.total_audits}
           description="所有已创建的检测任务"
           icon={
             <svg
@@ -66,7 +88,7 @@ export default function Home() {
         />
         <StatCard
           title="已完成"
-          value={stats.completedAudits}
+          value={loading ? '...' : stats.completed_audits}
           description="已完成分析的检测任务"
           icon={
             <svg
@@ -87,7 +109,7 @@ export default function Home() {
         />
         <StatCard
           title="平均 GEO Score™"
-          value={stats.averageScore > 0 ? stats.averageScore.toFixed(1) : 'N/A'}
+          value={loading ? '...' : (stats.average_score !== null && stats.average_score > 0 ? stats.average_score.toFixed(1) : 'N/A')}
           description="所有已完成检测的平均得分"
           icon={
             <svg
@@ -108,7 +130,7 @@ export default function Home() {
         />
         <StatCard
           title="监控品牌数"
-          value={stats.totalBrands}
+          value={loading ? '...' : stats.total_brands}
           description="正在监控的品牌总数"
           icon={
             <svg

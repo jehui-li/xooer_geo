@@ -93,3 +93,10 @@ export interface ErrorResponse {
   detail?: string
 }
 
+export interface StatsResponse {
+  total_audits: number
+  completed_audits: number
+  average_score: number | null
+  total_brands: number
+}
+

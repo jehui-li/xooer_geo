@@ -40,3 +40,11 @@ class ErrorResponse(BaseModel):
     error: str = Field(..., description="错误信息")
     detail: Optional[str] = Field(None, description="详细信息")
 
+
+class StatsResponse(BaseModel):
+    """统计数据响应"""
+    total_audits: int = Field(..., description="总检测数")
+    completed_audits: int = Field(..., description="已完成检测数")
+    average_score: Optional[float] = Field(None, description="平均 GEO Score™")
+    total_brands: int = Field(..., description="监控品牌数")
+

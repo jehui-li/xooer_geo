@@ -3,6 +3,7 @@ import type {
   AuditRequest,
   AuditResponse,
   AuditListResponse,
+  StatsResponse,
 } from '@/types/api'
 
 /**
@@ -39,5 +40,13 @@ export async function listAudits(params?: {
  */
 export async function deleteAudit(auditId: string): Promise<void> {
   await apiClient.delete(`/audits/${auditId}`)
+}
+
+/**
+ * 获取统计数据
+ */
+export async function getStats(): Promise<StatsResponse> {
+  const response = await apiClient.get<StatsResponse>('/stats')
+  return response.data
 }
 
